@@ -1,0 +1,79 @@
+name: Update Formula
+
+on:
+  repository_dispatch:
+    types: [formula-update]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag"
+        required: true
+        type: string
+
+jobs:
+  update:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
+            TAG="${{ github.event.client_payload.tag }}"
+          else
+            TAG="${{ github.event.inputs.tag }}"
+          fi
+          VERSION="${TAG#v}"
+          echo "tag=$TAG"         >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Download tarball and compute SHA-256
+        id: sha
+        run: |
+          URL="https://github.com/martinellimarco/t2sz/archive/refs/tags/${{ steps.tag.outputs.tag }}.tar.gz"
+          curl -fSL "$URL" -o t2sz.tar.gz
+          SHA256=$(sha256sum t2sz.tar.gz | cut -d' ' -f1)
+          echo "sha256=$SHA256" >> "$GITHUB_OUTPUT"
+          echo "url=$URL"       >> "$GITHUB_OUTPUT"
+
+      - name: Update formula
+        run: |
+          cat > Formula/t2sz.rb << 'FORMULA'
+          class T2sz < Formula
+            desc "Compress a file into a seekable zstd with per-file seeking for tar archives"
+            homepage "https://github.com/martinellimarco/t2sz"
+            url "${{ steps.sha.outputs.url }}"
+            sha256 "${{ steps.sha.outputs.sha256 }}"
+            license "GPL-3.0-or-later"
+
+            depends_on "cmake" => :build
+            depends_on "zstd"
+
+            def install
+              system "cmake", "-S", ".", "-B", "build", *std_cmake_args
+              system "cmake", "--build", "build"
+              system "cmake", "--install", "build"
+            end
+
+            test do
+              (testpath/"hello.txt").write "Hello, Homebrew!"
+              system "tar", "cf", "test.tar", "-C", testpath, "hello.txt"
+              system bin/"t2sz", "test.tar", "-o", "test.tar.zst"
+              assert_predicate testpath/"test.tar.zst", :exist?
+              system "zstd", "-d", "test.tar.zst", "-o", "test.restored.tar"
+              assert_equal (testpath/"test.tar").read, (testpath/"test.restored.tar").read
+            end
+          end
+          FORMULA
+          # Remove leading whitespace from heredoc
+          sed -i 's/^          //' Formula/t2sz.rb
+
+      - name: Commit and push
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/t2sz.rb
+          git diff --cached --quiet && echo "No changes" && exit 0
+          git commit -m "Update t2sz to ${{ steps.tag.outputs.version }}"
+          git push
