@@ -1,8 +1,8 @@
 class T2sz < Formula
   desc "Compress a file into a seekable zstd with per-file seeking for tar archives"
   homepage "https://github.com/martinellimarco/t2sz"
-  url "https://github.com/martinellimarco/t2sz/archive/refs/tags/v1.2.0.tar.gz"
-  sha256 "5411c70475556bc9bbf72f5688cd457d564264c25cc95f87ee50c58f075d362a"
+  url "https://github.com/martinellimarco/t2sz/archive/refs/tags/v1.2.1.tar.gz"
+  sha256 "0a39a2644aa1bec84dd31491bdafc6f4b4f2d5c8187144ff3273ea7e69c382a7"
   license "GPL-3.0-or-later"
 
   depends_on "cmake" => :build
