@@ -4,6 +4,7 @@ class T2sz < Formula
   url "https://github.com/martinellimarco/t2sz/archive/refs/tags/v1.2.1.tar.gz"
   sha256 "0a39a2644aa1bec84dd31491bdafc6f4b4f2d5c8187144ff3273ea7e69c382a7"
   license "GPL-3.0-or-later"
+  head "https://github.com/martinellimarco/t2sz.git", branch: "master"
 
   depends_on "cmake" => :build
   depends_on "zstd"
