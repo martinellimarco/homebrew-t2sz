@@ -6,12 +6,13 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag"
+        description: "Release tag (e.g. v1.2.1)"
         required: true
         type: string
 
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
   update:
@@ -42,7 +43,7 @@ jobs:
 
       - name: Update formula
         run: |
-          cat > Formula/t2sz.rb << 'FORMULA'
+          cat > Formula/t2sz.rb << FORMULA
           class T2sz < Formula
             desc "Compress a file into a seekable zstd with per-file seeking for tar archives"
             homepage "https://github.com/martinellimarco/t2sz"
@@ -72,11 +73,19 @@ jobs:
           # Remove leading whitespace from heredoc
           sed -i 's/^          //' Formula/t2sz.rb
 
-      - name: Commit and push
+      - name: Create pull request
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          BRANCH="formula-update/${{ steps.tag.outputs.version }}"
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
           git add Formula/t2sz.rb
           git diff --cached --quiet && echo "No changes" && exit 0
-          git commit -m "Update t2sz to ${{ steps.tag.outputs.version }}"
-          git push
+          git commit -m "t2sz ${{ steps.tag.outputs.version }}"
+          git push -u origin "$BRANCH"
+          gh pr create \
+            --title "t2sz ${{ steps.tag.outputs.version }}" \
+            --body "Automated formula update for t2sz ${{ steps.tag.outputs.version }}." \
+            --base master --head "$BRANCH"
