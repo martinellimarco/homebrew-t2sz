@@ -1,4 +1,4 @@
-name: Update Formula
+name: Update Formula and Build Bottles
 
 on:
   repository_dispatch:
@@ -12,44 +12,45 @@ on:
 
 permissions:
   contents: write
-  pull-requests: write
+
+env:
+  TAG: ${{ github.event.client_payload.tag || github.event.inputs.tag }}
 
 jobs:
+  # ==========================================================================
+  # JOB 1: Update formula with new version URL + SHA256 (no bottle block).
+  # Commits directly to master so the bottle job can brew tap it.
+  # ==========================================================================
   update:
     runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Resolve tag
-        id: tag
-        run: |
-          if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
-            TAG="${{ github.event.client_payload.tag }}"
-          else
-            TAG="${{ github.event.inputs.tag }}"
-          fi
-          VERSION="${TAG#v}"
-          echo "tag=$TAG"         >> "$GITHUB_OUTPUT"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+      - name: Determine version
+        id: version
+        run: echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
 
-      - name: Download tarball and compute SHA-256
-        id: sha
+      - name: Download source and compute SHA256
+        id: sha256
         run: |
-          URL="https://github.com/martinellimarco/t2sz/archive/refs/tags/${{ steps.tag.outputs.tag }}.tar.gz"
-          curl -fSL "$URL" -o t2sz.tar.gz
-          SHA256=$(sha256sum t2sz.tar.gz | cut -d' ' -f1)
-          echo "sha256=$SHA256" >> "$GITHUB_OUTPUT"
-          echo "url=$URL"       >> "$GITHUB_OUTPUT"
+          curl -fsSL -o source.tar.gz \
+            "https://github.com/martinellimarco/t2sz/archive/refs/tags/${TAG}.tar.gz"
+          echo "sha256=$(sha256sum source.tar.gz | awk '{print $1}')" >> "$GITHUB_OUTPUT"
 
-      - name: Update formula
+      - name: Generate formula
         run: |
-          cat > Formula/t2sz.rb << FORMULA
+          VERSION="${{ steps.version.outputs.version }}"
+          SHA256="${{ steps.sha256.outputs.sha256 }}"
+          cat > Formula/t2sz.rb << FORMULA_EOF
           class T2sz < Formula
             desc "Compress a file into a seekable zstd with per-file seeking for tar archives"
             homepage "https://github.com/martinellimarco/t2sz"
-            url "${{ steps.sha.outputs.url }}"
-            sha256 "${{ steps.sha.outputs.sha256 }}"
+            url "https://github.com/martinellimarco/t2sz/archive/refs/tags/v${VERSION}.tar.gz"
+            sha256 "${SHA256}"
             license "GPL-3.0-or-later"
+            head "https://github.com/martinellimarco/t2sz.git", branch: "master"
 
             depends_on "cmake" => :build
             depends_on "zstd"
@@ -69,23 +70,140 @@ jobs:
               assert_equal (testpath/"test.tar").read, (testpath/"test.restored.tar").read
             end
           end
-          FORMULA
-          # Remove leading whitespace from heredoc
+          FORMULA_EOF
           sed -i 's/^          //' Formula/t2sz.rb
 
-      - name: Create pull request
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/t2sz.rb
+          git diff --cached --quiet && echo "No changes" && exit 0
+          git commit -m "t2sz ${TAG}: update formula"
+          git push origin master
+
+  # ==========================================================================
+  # JOB 2: Build bottles on each platform.
+  # Taps the updated formula from master, installs in bottle mode, creates
+  # the bottle tarball + JSON metadata, uploads as workflow artifacts.
+  #
+  # Platform mapping:
+  #   macos-15       -> arm64 Apple Silicon -> arm64_sequoia
+  #   macos-15-intel -> x86_64 Intel Mac    -> sequoia
+  #   ubuntu-24.04   -> x86_64 Linux        -> x86_64_linux
+  # ==========================================================================
+  bottle:
+    needs: update
+    strategy:
+      matrix:
+        os: [macos-15, macos-15-intel, ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
+    env:
+      VERSION: ${{ needs.update.outputs.version }}
+    steps:
+      - name: Set up Homebrew
+        run: |
+          if [[ "$RUNNER_OS" == "Linux" ]]; then
+            eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+            echo "/home/linuxbrew/.linuxbrew/bin" >> "$GITHUB_PATH"
+            echo "/home/linuxbrew/.linuxbrew/sbin" >> "$GITHUB_PATH"
+          fi
+          brew --version
+
+      - name: Tap and install
+        run: |
+          brew tap martinellimarco/t2sz
+          brew install --build-bottle martinellimarco/t2sz/t2sz
+
+      - name: Create bottle
+        run: |
+          brew bottle --json \
+            --root-url="https://github.com/martinellimarco/homebrew-t2sz/releases/download/t2sz-${VERSION}" \
+            martinellimarco/t2sz/t2sz
+
+      # brew bottle creates files with double-dash (t2sz--1.2.1...) but
+      # brew install expects single-dash (t2sz-1.2.1...) in the download URL.
+      # Rename using the filename from the JSON metadata.
+      - name: Rename bottle for upload
+        run: |
+          JSON_FILE=$(ls t2sz--*.bottle.json)
+          LOCAL_FILE=$(jq -r '.[].bottle.tags[].local_filename' "$JSON_FILE")
+          PUBLISH_FILE=$(jq -r '.[].bottle.tags[].filename' "$JSON_FILE")
+          if [[ "$LOCAL_FILE" != "$PUBLISH_FILE" ]]; then
+            mv "$LOCAL_FILE" "$PUBLISH_FILE"
+          fi
+          echo "BOTTLE_FILE=$PUBLISH_FILE" >> "$GITHUB_ENV"
+          echo "JSON_FILE=$JSON_FILE" >> "$GITHUB_ENV"
+
+      - name: Upload bottle tarball
+        uses: actions/upload-artifact@v4
+        with:
+          name: bottle-${{ matrix.os }}
+          path: ${{ env.BOTTLE_FILE }}
+
+      - name: Upload bottle JSON
+        uses: actions/upload-artifact@v4
+        with:
+          name: json-${{ matrix.os }}
+          path: ${{ env.JSON_FILE }}
+
+  # ==========================================================================
+  # JOB 3: Publish bottles and update formula.
+  # Downloads all bottle artifacts, creates a GitHub Release on the tap repo,
+  # uploads the bottle tarballs, then uses brew bottle --merge to add the
+  # bottle block to the formula. Commits the final formula to master.
+  # ==========================================================================
+  publish:
+    needs: [update, bottle]
+    runs-on: ubuntu-24.04
+    env:
+      VERSION: ${{ needs.update.outputs.version }}
+    steps:
+      # setup-homebrew in a tap repo creates a symlink from the Homebrew
+      # tap path to the checkout, so brew bottle --merge --write modifies
+      # the formula directly in the checkout.
+      - name: Set up Homebrew
+        id: setup-homebrew
+        uses: Homebrew/actions/setup-homebrew@master
+
+      - name: Download bottle tarballs
+        uses: actions/download-artifact@v4
+        with:
+          pattern: bottle-*
+          path: bottles/
+          merge-multiple: true
+
+      - name: Download bottle JSON files
+        uses: actions/download-artifact@v4
+        with:
+          pattern: json-*
+          path: json/
+          merge-multiple: true
+
+      - name: Create release and upload bottles
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          BRANCH="formula-update/${{ steps.tag.outputs.version }}"
-          git config user.name  "github-actions[bot]"
+          RELEASE_TAG="t2sz-${VERSION}"
+          gh release create "$RELEASE_TAG" \
+            --repo martinellimarco/homebrew-t2sz \
+            --title "t2sz ${VERSION} bottles" \
+            --notes "Pre-compiled bottles for t2sz ${VERSION}" \
+            || echo "Release already exists"
+          for f in bottles/*.tar.gz; do
+            gh release upload "$RELEASE_TAG" "$f" \
+              --repo martinellimarco/homebrew-t2sz --clobber
+          done
+
+      - name: Merge bottle metadata into formula
+        run: brew bottle --merge --write --no-commit json/*.json
+
+      - name: Commit and push formula with bottles
+        working-directory: ${{ steps.setup-homebrew.outputs.repository-path }}
+        run: |
+          git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git checkout -b "$BRANCH"
           git add Formula/t2sz.rb
           git diff --cached --quiet && echo "No changes" && exit 0
-          git commit -m "t2sz ${{ steps.tag.outputs.version }}"
-          git push -u origin "$BRANCH"
-          gh pr create \
-            --title "t2sz ${{ steps.tag.outputs.version }}" \
-            --body "Automated formula update for t2sz ${{ steps.tag.outputs.version }}." \
-            --base master --head "$BRANCH"
+          git commit -m "t2sz ${VERSION}: add bottle block"
+          git push origin master
