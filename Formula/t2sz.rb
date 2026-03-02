@@ -26,7 +26,7 @@ class T2sz < Formula
   test do
     (testpath/"hello.txt").write "Hello, Homebrew!"
     system "tar", "cf", "test.tar", "-C", testpath, "hello.txt"
-    system bin/"t2sz", "test.tar", "-o", "test.tar.zst"
+    system bin/"t2sz", "-o", "test.tar.zst", "test.tar"
     assert_path_exists testpath/"test.tar.zst"
     system "zstd", "-d", "test.tar.zst", "-o", "test.restored.tar"
     assert_equal (testpath/"test.tar").read, (testpath/"test.restored.tar").read
