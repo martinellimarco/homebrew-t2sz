@@ -167,6 +167,10 @@ jobs:
         id: setup-homebrew
         uses: Homebrew/actions/setup-homebrew@master
 
+      - name: Sync with latest master
+        working-directory: ${{ steps.setup-homebrew.outputs.repository-path }}
+        run: git pull origin master
+
       - name: Download bottle tarballs
         uses: actions/download-artifact@v4
         with:
