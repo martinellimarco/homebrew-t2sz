@@ -6,6 +6,14 @@ class T2sz < Formula
   license "GPL-3.0-or-later"
   head "https://github.com/martinellimarco/t2sz.git", branch: "master"
 
+  bottle do
+    root_url "https://github.com/martinellimarco/homebrew-t2sz/releases/download/t2sz-1.2.3"
+    rebuild 1
+    sha256 cellar: :any,                 arm64_sequoia: "c046c1288c545526dc95bef10ae30defdfd6fa1d187721b30312e877d5614db6"
+    sha256 cellar: :any,                 sequoia:       "9ef22cb89d97410c33f12437c613c0673da3d6e83a9af492f4b71aea2536a771"
+    sha256 cellar: :any_skip_relocation, x86_64_linux:  "553fbcb6a4d9365557e1c3cc91b15db3e72ad811657b1579b005151964f01373"
+  end
+
   depends_on "cmake" => :build
   depends_on "zstd"
 
