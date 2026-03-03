@@ -80,6 +80,7 @@ jobs:
           git add Formula/t2sz.rb
           git diff --cached --quiet && echo "No changes" && exit 0
           git commit -m "t2sz ${TAG}: update formula"
+          git pull --rebase origin master
           git push origin master
 
   # ==========================================================================
@@ -208,4 +209,5 @@ jobs:
           git add Formula/t2sz.rb
           git diff --cached --quiet && echo "No changes" && exit 0
           git commit -m "t2sz ${VERSION}: add bottle block"
+          git pull --rebase origin master
           git push origin master
