@@ -1,18 +1,10 @@
 class T2sz < Formula
   desc "Compress a file into a seekable zstd with per-file seeking for tar archives"
   homepage "https://github.com/martinellimarco/t2sz"
-  url "https://github.com/martinellimarco/t2sz/archive/refs/tags/v1.2.3.tar.gz"
-  sha256 "06bcaee21dc37124ad3ce6f7a0dc3100a79fb0ea62d1692c6094929a78fd2598"
+  url "https://github.com/martinellimarco/t2sz/archive/refs/tags/v1.2.5.tar.gz"
+  sha256 "4bdc590a8a2085951cfbe83ef6ab22b5fd4723163662e1aae41260c0b5a49a01"
   license "GPL-3.0-or-later"
   head "https://github.com/martinellimarco/t2sz.git", branch: "master"
-
-  bottle do
-    root_url "https://github.com/martinellimarco/homebrew-t2sz/releases/download/t2sz-1.2.3"
-    rebuild 1
-    sha256 cellar: :any,                 arm64_sequoia: "c046c1288c545526dc95bef10ae30defdfd6fa1d187721b30312e877d5614db6"
-    sha256 cellar: :any,                 sequoia:       "9ef22cb89d97410c33f12437c613c0673da3d6e83a9af492f4b71aea2536a771"
-    sha256 cellar: :any_skip_relocation, x86_64_linux:  "553fbcb6a4d9365557e1c3cc91b15db3e72ad811657b1579b005151964f01373"
-  end
 
   depends_on "cmake" => :build
   depends_on "zstd"
