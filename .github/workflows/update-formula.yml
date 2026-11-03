@@ -209,7 +209,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git config --local http.https://github.com/.extraheader \
-            "AUTHORIZATION: basic $(echo -n x-access-token:${{ secrets.GITHUB_TOKEN }} | base64)"
+            "AUTHORIZATION: basic $(echo -n x-access-token:${{ secrets.GITHUB_TOKEN }} | base64 -w0)"
           git add Formula/t2sz.rb
           git diff --cached --quiet && echo "No changes" && exit 0
           git commit -m "t2sz ${VERSION}: add bottle block"
