@@ -4,7 +4,7 @@ class T2sz < Formula
   url "https://github.com/martinellimarco/t2sz/archive/refs/tags/v1.2.5.tar.gz"
   sha256 "4bdc590a8a2085951cfbe83ef6ab22b5fd4723163662e1aae41260c0b5a49a01"
   license "GPL-3.0-or-later"
-  head "https://github.com/martinellimarco/t2sz.git", branch: "master"
+  head "https://github.com/martinellimarco/t2sz.git", branch: "main"
 
   bottle do
     root_url "https://github.com/martinellimarco/homebrew-t2sz/releases/download/t2sz-1.2.5"
