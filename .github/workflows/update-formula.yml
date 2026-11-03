@@ -165,7 +165,7 @@ jobs:
       # the formula directly in the checkout.
       - name: Set up Homebrew
         id: setup-homebrew
-        uses: Homebrew/actions/setup-homebrew@master
+        uses: Homebrew/actions/setup-homebrew@main
 
       - name: Sync with latest master
         working-directory: ${{ steps.setup-homebrew.outputs.repository-path }}
